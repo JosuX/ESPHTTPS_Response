@@ -16,6 +16,7 @@ float Latitude, Longitude;
 int year, month, date, hour, minute, second;
 bool emergency, remoteEmergency;
 
+
 time_t getEpochTime(int year, int month, int date, int hour, int minute, int second)
 {
   struct tm t;
@@ -30,6 +31,7 @@ time_t getEpochTime(int year, int month, int date, int hour, int minute, int sec
 }
 
 void setup() {
+
   Serial.begin(9600);
   SerialGPS.begin(9600);
   pinMode(D6, INPUT);
@@ -41,56 +43,57 @@ void setup() {
   }
 
   Serial.println("Connected to WiFi");
-
 }
 
 void loop() {
-
   static unsigned long previousMillis = 0;
-  const unsigned long interval = 10000; // 5 seconds
+  const unsigned long interval = 10000; // 10 seconds
 
-    while (SerialGPS.available() > 0) {
-      if (gps.encode(SerialGPS.read())) {
-        if (gps.location.isValid()) {
-          Latitude = gps.location.lat();
-          Longitude = gps.location.lng();
-        }
+  while (SerialGPS.available() > 0) {
+    if (gps.encode(SerialGPS.read())) {
+      if (gps.location.isValid()) {
+        Latitude = gps.location.lat();
+        Longitude = gps.location.lng();
+      }
 
-        if (gps.date.isValid()) {
-          date = gps.date.day();
-          month = gps.date.month();
-          year = gps.date.year();
-        }
+      if (gps.date.isValid()) {
+        date = gps.date.day();
+        month = gps.date.month();
+        year = gps.date.year();
+      }
 
-        if (gps.time.isValid()) {
-          hour = gps.time.hour() + 8;  // Adjust for your timezone offset
-          minute = gps.time.minute();
-          second = gps.time.second();
-        }
+      if (gps.time.isValid()) {
+        hour = gps.time.hour() + 8;  // Adjust for your timezone offset
+        minute = gps.time.minute();
+        second = gps.time.second();
       }
     }
+  }
+
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    if(gps.time.isValid() && gps.location.isValid() && gps.date.isValid())
-    putData();
+    if (gps.time.isValid() && gps.location.isValid() && gps.date.isValid()) {
+      putData();
+    }
   }
-  if(digitalRead(D6) == 1){
+
+  if (digitalRead(D6) == 1) {
     emergency = true;
   }
 }
 
-
 void putData() {
-  WiFiClientSecure client;
-  client.setInsecure(); // Ignore SSL certificate verification
-  HTTPClient http;
+WiFiClientSecure client;
+client.setInsecure(); // Ignore SSL certificate verification
+HTTPClient http;
+
 
   String firebaseURL = String("https://") + firebaseHost + "/buses/B00001/emergency.json";
 
   http.begin(client, firebaseURL);
 
-  // Send the POST request with the JSON data
+  // Send the GET request
   int httpResponseCode = http.GET();
 
   if (httpResponseCode > 0) {
@@ -98,7 +101,7 @@ void putData() {
     Serial.println(httpResponseCode);
     String response = http.getString();
     Serial.println(response);
-    if(response == "notified"){
+    if (response == "notified") {
       emergency = 0;
     }
   } else {
@@ -124,14 +127,40 @@ void putData() {
   // Set the content type header
   http.addHeader("Content-Type", "application/json");
 
-  // Send the POST request with the JSON data
+  // Track the response time
+  unsigned long requestTime = millis();
+
+  // Send the PUT request with the JSON data
   httpResponseCode = http.PUT(json);
+
+  unsigned long responseTime = millis() - requestTime;
 
   if (httpResponseCode > 0) {
     Serial.print("HTTP Response code: ");
     Serial.println(httpResponseCode);
     String response = http.getString();
     Serial.println(response);
+    Serial.print("Response Time: ");
+    Serial.print(responseTime);
+    Serial.println(" ms");
+
+    // Append response time to /test.json
+    firebaseURL = String("https://") + firebaseHost + "/test.json";
+    String appendJson = "{\"" + String(getEpochTime(year, month, date, hour, minute, second)) + "\":" + String(responseTime) + "}";
+
+    http.begin(client, firebaseURL);
+    http.addHeader("Content-Type", "application/json");
+    httpResponseCode = http.PATCH(appendJson);
+    if (httpResponseCode > 0) {
+      Serial.print("HTTP Response code for appending response time: ");
+      Serial.println(httpResponseCode);
+      String appendResponse = http.getString();
+      Serial.println(appendResponse);
+    } else {
+      Serial.print("Error code for appending response time: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();
   } else {
     Serial.print("Error code: ");
     Serial.println(httpResponseCode);
@@ -139,8 +168,5 @@ void putData() {
 
   // End the HTTPS connection
   http.end();
-
-
-  
 }
 
