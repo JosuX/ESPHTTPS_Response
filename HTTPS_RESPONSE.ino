@@ -14,7 +14,7 @@ const char* firebaseHost = "ube-express-default-rtdb.asia-southeast1.firebasedat
 const char* dataPath = "/buses/B00001.json";
 float Latitude, Longitude;
 int year, month, date, hour, minute, second;
-bool emergency, remoteEmergency;
+int emergency;
 
 
 time_t getEpochTime(int year, int month, int date, int hour, int minute, int second)
@@ -73,13 +73,14 @@ void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    if (gps.time.isValid() && gps.location.isValid() && gps.date.isValid()) {
+    if (gps.location.isValid()) {
       putData();
     }
   }
 
-  if (digitalRead(D6) == 1) {
-    emergency = true;
+  if (digitalRead(D6) == 1 && emergency != 1) {
+    emergency = 1;
+    Serial.println("Emergency");
   }
 }
 
@@ -101,7 +102,7 @@ HTTPClient http;
     Serial.println(httpResponseCode);
     String response = http.getString();
     Serial.println(response);
-    if (response == "notified") {
+    if (response == "\"notified\"") {
       emergency = 0;
     }
   } else {
